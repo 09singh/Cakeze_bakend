@@ -1,0 +1,12 @@
+const express = require("express");
+const router = express.Router();
+const controller = require("./addon.controller");
+const schema = require("./addon.validator");
+const { authenticate, requireRole } = require("../auth/auth.middleware");
+const upload = require("../../middleware/upload.middleware");
+const validate = (req, res, next) => { const { error, value } = schema.validate(req.body, { abortEarly: false, stripUnknown: true }); if (error) return res.status(400).json({ success: false, message: "Validation failed", errors: error.details.map((item) => item.message) }); req.body = value; next(); };
+router.get("/", controller.getActive);
+router.get("/admin", authenticate, requireRole("admin"), controller.getAdmin);
+router.post("/admin", authenticate, requireRole("admin"), upload.single("image"), validate, controller.create);
+router.delete("/admin/:id", authenticate, requireRole("admin"), controller.remove);
+module.exports = router;
