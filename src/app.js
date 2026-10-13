@@ -35,7 +35,7 @@ app.use(
   cors({
     origin:
       process.env.FRONTEND_URL ||
-      'https://cakezee.netlify.app/',
+      'https://cakezee.netlify.app',
 
     methods: [
       'GET',
