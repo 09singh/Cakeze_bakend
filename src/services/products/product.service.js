@@ -335,8 +335,7 @@ const createProduct = async (
 
     slug: product.slug,
 
-    categoryId:
-      product.categoryId.toString(),
+    categoryId: product.categoryId?.toString(),
   });
 
   return product;
@@ -437,6 +436,68 @@ const getCustomerProducts = async (
   return result;
 };
 
+const getReadyNowProducts = async ({ readyNowCategory, page, limit, sort } = {}) => {
+  const pagination = buildPagination({ page, limit });
+  const filter = { productType: "ready_now", isActive: true };
+  if (readyNowCategory) filter.readyNowCategory = readyNowCategory;
+  const cacheKey = getProductListCacheKey({
+    type: "ready_now", readyNowCategory: readyNowCategory || "all",
+    page: pagination.page, limit: pagination.limit, sort,
+  });
+  const cached = getCache(cacheKey);
+  if (cached) return cached;
+  const products = await Product.find(filter)
+    .select(CUSTOMER_PRODUCT_PROJECTION)
+    .sort(buildSort(sort))
+    .skip(pagination.skip)
+    .limit(pagination.limit + 1)
+    .lean();
+  const hasNext = products.length > pagination.limit;
+  if (hasNext) products.pop();
+  const result = {
+    products,
+    pagination: { page: pagination.page, limit: pagination.limit, hasNext },
+  };
+  setCache(cacheKey, result);
+  return result;
+};
+
+const getAdminReadyNowProducts = async () => Product.find({ productType: "ready_now" })
+  .select(ADMIN_PRODUCT_PROJECTION)
+  .sort({ readyNowCategory: 1, sortOrder: 1, createdAt: -1 })
+  .lean();
+
+const createReadyNowProduct = async (data, imageFiles = []) => {
+  const existing = await Product.findOne({ slug: data.slug }).select("_id").lean();
+  if (existing) {
+    const error = new Error("A product with this slug already exists");
+    error.statusCode = 409;
+    throw error;
+  }
+  const images = await Promise.all(imageFiles.map(async (file) => {
+    const uploaded = await uploadBufferToCloudinary(file.buffer, { folder: "cakezee/ready-now" });
+    return { url: uploaded.secure_url, publicId: uploaded.public_id, width: uploaded.width, height: uploaded.height, alt: data.name };
+  }));
+  const price = Number(data.price);
+  const product = await Product.create({
+    name: data.name,
+    slug: data.slug,
+    description: data.description || "",
+    categoryId: null,
+    productType: "ready_now",
+    readyNowCategory: data.readyNowCategory,
+    images,
+    sizes: [{ name: "1 item", value: 1, unit: "item" }],
+    flavours: [{ name: "Standard", basePrice: price }],
+    pricing: { baseWeight: 1, weightUnit: "item", currency: "INR" },
+    inventoryQuantity: data.inventoryQuantity,
+    isActive: data.isActive,
+    sortOrder: data.sortOrder,
+  });
+  invalidateProductCaches({ productId: product._id.toString(), slug: product.slug });
+  return product;
+};
+
 /*
 |--------------------------------------------------------------------------
 | GET CUSTOMER PRODUCT BY ID
@@ -471,7 +532,6 @@ const getCustomerProductById =
       await Product.findOne({
         _id: productId,
         isActive: true,
-      inventoryQuantity: { $gt: 0 },
       })
         .select(
           CUSTOMER_PRODUCT_DETAIL_PROJECTION
@@ -522,7 +582,6 @@ const getCustomerProductBySlug =
       await Product.findOne({
         slug,
         isActive: true,
-        inventoryQuantity: { $gt: 0 },
       })
         .select(
           CUSTOMER_PRODUCT_DETAIL_PROJECTION
@@ -655,7 +714,7 @@ const updateProduct = async (
   if (
     cleanData.categoryId &&
     cleanData.categoryId.toString() !==
-      existingProduct.categoryId.toString()
+      existingProduct.categoryId?.toString()
   ) {
     await validateCategory(
       cleanData.categoryId
@@ -756,7 +815,7 @@ const updateProduct = async (
     productId,
     slug: existingProduct.slug,
     categoryId:
-      existingProduct.categoryId.toString(),
+      existingProduct.categoryId?.toString(),
   });
 
   /*
@@ -766,7 +825,7 @@ const updateProduct = async (
     productId,
     slug: updatedProduct.slug,
     categoryId:
-      updatedProduct.categoryId.toString(),
+      updatedProduct.categoryId?.toString(),
   });
 
   return updatedProduct;
@@ -824,7 +883,7 @@ const deactivateProduct =
       slug: product.slug,
 
       categoryId:
-        product.categoryId.toString(),
+        product.categoryId?.toString(),
     });
 
     return product;
@@ -882,7 +941,7 @@ const activateProduct =
       slug: product.slug,
 
       categoryId:
-        product.categoryId.toString(),
+        product.categoryId?.toString(),
     });
 
     return product;
@@ -898,17 +957,20 @@ const removeProduct = async (productId) => {
     if (image.publicId) await cloudinary.uploader.destroy(image.publicId, { resource_type: "image" });
   }
   await product.deleteOne();
-  invalidateProductCaches({ productId: product._id.toString(), slug: product.slug, categoryId: product.categoryId.toString() });
+  invalidateProductCaches({ productId: product._id.toString(), slug: product.slug, categoryId: product.categoryId?.toString() });
 };
 
 module.exports = {
   createProduct,
 
   getCustomerProducts,
+  getReadyNowProducts,
   getCustomerProductById,
   getCustomerProductBySlug,
 
   getAdminProducts,
+  getAdminReadyNowProducts,
+  createReadyNowProduct,
 
   updateProduct,
 

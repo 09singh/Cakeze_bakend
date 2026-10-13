@@ -17,6 +17,8 @@ const CUSTOMER_PRODUCT_PROJECTION = {
   badge: 1,
   sortOrder: 1,
   inventoryQuantity: 1,
+  productType: 1,
+  readyNowCategory: 1,
 };
 
 /*
@@ -36,6 +38,8 @@ const CUSTOMER_PRODUCT_DETAIL_PROJECTION = {
   pricing: 1,
   badge: 1,
   inventoryQuantity: 1,
+  productType: 1,
+  readyNowCategory: 1,
 };
 
 /*
@@ -56,6 +60,8 @@ const ADMIN_PRODUCT_PROJECTION = {
   badge: 1,
   isActive: 1,
   inventoryQuantity: 1,
+  productType: 1,
+  readyNowCategory: 1,
   sortOrder: 1,
   createdAt: 1,
   updatedAt: 1,
@@ -73,7 +79,7 @@ const buildCustomerFilter = ({
 }) => {
   const filter = {
     isActive: true,
-    inventoryQuantity: { $gt: 0 },
+    productType: { $ne: "ready_now" },
   };
 
   if (categoryId) {
@@ -111,7 +117,7 @@ const buildAdminFilter = ({
   isActive,
   search,
 }) => {
-  const filter = {};
+  const filter = { productType: { $ne: "ready_now" } };
 
   if (categoryId) {
     filter.categoryId = categoryId;

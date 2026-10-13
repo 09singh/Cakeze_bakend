@@ -1,5 +1,6 @@
 const Joi = require("joi");
 const mongoose = require("mongoose");
+const PRODUCT_CONSTANTS = require("./product.constants");
 
 /*
 |--------------------------------------------------------------------------
@@ -181,6 +182,25 @@ const createProductSchema = Joi.object({
     .default(0),
 });
 
+const createReadyNowProductSchema = Joi.object({
+  name: Joi.string().trim().min(2).max(150).required(),
+  slug: Joi.string().trim().lowercase().min(2).max(180)
+    .pattern(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).required(),
+  description: Joi.string().trim().max(2000).allow("").default(""),
+  readyNowCategory: Joi.string().valid(...PRODUCT_CONSTANTS.READY_NOW_CATEGORIES).required(),
+  price: Joi.number().positive().max(1000000).required(),
+  inventoryQuantity: Joi.number().integer().min(0).max(1000000).required(),
+  isActive: Joi.boolean().default(true),
+  sortOrder: Joi.number().integer().min(0).default(0),
+});
+
+const readyNowQuerySchema = Joi.object({
+  page: Joi.number().integer().min(1).default(1),
+  limit: Joi.number().integer().min(1).max(50).default(20),
+  readyNowCategory: Joi.string().valid(...PRODUCT_CONSTANTS.READY_NOW_CATEGORIES).optional(),
+  sort: Joi.string().valid("newest", "oldest", "sort_order").default("sort_order"),
+});
+
 /*
 |--------------------------------------------------------------------------
 | UPDATE PRODUCT
@@ -289,6 +309,8 @@ const getProductsQuerySchema = Joi.object({
 
 module.exports = {
   createProductSchema,
+  createReadyNowProductSchema,
+  readyNowQuerySchema,
   updateProductSchema,
   productIdSchema,
   getProductsQuerySchema,

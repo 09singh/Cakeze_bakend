@@ -23,6 +23,27 @@ const actorDetails = (user) => ({
   name: user?.name || user?.email || "Admin",
 });
 
+function reconcileReceipts(receipts, { type = "all", mode = "all" } = {}) {
+  const typeReceipts = receipts.filter((entry) =>
+    type === "all" || entry.type.toLowerCase() === type
+  );
+  const items = typeReceipts.filter((entry) => {
+    if (mode === "all") return true;
+    if (mode === "other") return !["cash", "cod", "upi"].includes(entry.mode);
+    if (mode === "cash") return ["cash", "cod"].includes(entry.mode);
+    return entry.mode === mode;
+  });
+  const totals = typeReceipts.reduce((result, entry) => {
+    result.total += entry.amount;
+    if (entry.mode === "upi") result.upi += entry.amount;
+    else if (["cash", "cod"].includes(entry.mode)) result.cash += entry.amount;
+    else result.other += entry.amount;
+    if (entry.receivedByRole === "delivery") result.driver += entry.amount;
+    return result;
+  }, { total: 0, upi: 0, cash: 0, other: 0, driver: 0 });
+  return { items, totals };
+}
+
 function invoiceDetails(order) {
   if (!order) return null;
   return {
@@ -159,20 +180,8 @@ async function getFinanceData({ from, to, type = "all", mode = "all" }) {
     }
   }
   receipts.sort((a, b) => new Date(b.date) - new Date(a.date));
-  const filteredReceipts = receipts.filter((entry) => {
-    const methodMatches = mode === "all" || (mode === "other"
-      ? !["cash", "cod", "upi"].includes(entry.mode)
-      : entry.mode === mode);
-    return methodMatches && (type === "all" || entry.type.toLowerCase() === type);
-  });
-  const totals = filteredReceipts.reduce((result, entry) => {
-    result.total += entry.amount;
-    if (entry.mode === "upi") result.upi += entry.amount;
-    else if (["cash", "cod"].includes(entry.mode)) result.cash += entry.amount;
-    else result.other += entry.amount;
-    if (entry.receivedByRole === "delivery") result.driver += entry.amount;
-    return result;
-  }, { total: 0, upi: 0, cash: 0, other: 0, driver: 0 });
+  // Keep summary cards independent of the selected payment mode.
+  const { items: filteredReceipts, totals } = reconcileReceipts(receipts, { type, mode });
 
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: BUSINESS_TIMEZONE }).format(new Date());
   const outstanding = orders.filter((order) => {
@@ -227,4 +236,4 @@ async function getFinanceData({ from, to, type = "all", mode = "all" }) {
   };
 }
 
-module.exports = { getFinanceData, getFinanceInvoice, createFinanceAdjustment };
+module.exports = { getFinanceData, getFinanceInvoice, createFinanceAdjustment, reconcileReceipts };

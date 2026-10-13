@@ -34,6 +34,7 @@ const createOrderSchema = Joi.object({
   addonIds: Joi.array().items(Joi.string().custom(objectId)).max(20).unique().default([]),
   customisation: Joi.object({
     nameOnCake: Joi.string().trim().max(30).allow("").default(""),
+    eggless: Joi.boolean().default(false),
     messageOnCake: Joi.string().trim().max(100).allow("").default(""),
     colourChange: Joi.string().trim().max(50).allow("").default(""),
     addPhoto: Joi.string().trim().max(100).allow("").default(""),
@@ -60,6 +61,8 @@ const createOrderSchema = Joi.object({
       then: Joi.string().trim().min(1).max(1000).required(),
       otherwise: Joi.string().trim().max(1000).allow("").default(""),
     }),
+    mapLink: Joi.string().uri({ scheme: ["http", "https"] }).max(2000).allow("").default(""),
+    mapLinkText: Joi.string().trim().max(200).allow("").default(""),
   }).required(),
   couponCode: Joi.string().trim().uppercase().max(30).allow("", null).default(null),
   paymentMethod: Joi.string().valid("cod", "upi", "card", "netbanking", "wallet").required(),
@@ -67,8 +70,11 @@ const createOrderSchema = Joi.object({
 
 const createAdminOrderSchema = createOrderSchema.keys({
   customerName: Joi.string().trim().max(100).allow("").default(""),
+  occasion: Joi.string().trim().max(100).allow("").default(""),
+  occasionDate: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).allow("").default(""),
   gstin: Joi.string().trim().uppercase().length(15).allow("").default(""),
   unitPrice: Joi.number().min(0.01).required(),
+  deliveryFee: Joi.number().min(0).max(100000).default(60),
 });
 
 const lookupOrderSchema = Joi.object({

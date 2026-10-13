@@ -14,6 +14,8 @@ const {
 
 const {
   createProductSchema,
+  createReadyNowProductSchema,
+  readyNowQuerySchema,
   updateProductSchema,
   productIdSchema,
   getProductsQuerySchema,
@@ -122,6 +124,12 @@ const validateParams = (schema) => {
 */
 
 router.get(
+  "/ready-now",
+  validateQuery(readyNowQuerySchema),
+  productController.getReadyNowProducts
+);
+
+router.get(
   "/",
   normalizeProductQuery,
   validateQuery(getProductsQuerySchema),
@@ -139,6 +147,23 @@ router.get(
 | ADMIN ROUTES
 |--------------------------------------------------------------------------
 */
+
+router.get(
+  "/admin/ready-now",
+  authenticate,
+  requireRole("admin"),
+  productController.getAdminReadyNowProducts
+);
+
+router.post(
+  "/admin/ready-now",
+  authenticate,
+  requireRole("admin"),
+  upload.array("images", 5),
+  parseProductMultipart,
+  validateBody(createReadyNowProductSchema),
+  productController.createReadyNowProduct
+);
 
 router.get(
   "/admin",

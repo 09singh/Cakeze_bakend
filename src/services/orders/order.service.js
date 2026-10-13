@@ -56,14 +56,18 @@ const createGuestOrder = async (data, createdBy = null) => {
   }
 
   const addonsTotal = selectedAddons.reduce((sum, addon) => sum + addon.price, 0) * data.quantity;
-  const deliveryFee = data.delivery.method === "delivery" ? 60 : 0;
+  const deliveryFee = data.delivery.method === "delivery"
+    ? (data.deliveryFee === undefined ? 60 : Number(data.deliveryFee))
+    : 0;
   const subtotal = cakePrice + addonsTotal + deliveryFee;
   const couponCode = data.couponCode ? String(data.couponCode).trim().toUpperCase() : null;
   const couponDetails = couponCode ? await couponService.validateCoupon(couponCode) : null;
   const discountValue = couponDetails?.discountValue || 0;
   const discount = Math.round(subtotal * discountValue / 100);
   const total = Math.max(0, subtotal - discount);
-  const category = await Category.findById(product.categoryId).select("name").lean();
+  const category = product.categoryId
+    ? await Category.findById(product.categoryId).select("name").lean()
+    : null;
 
   // Reserve stock atomically before accepting the order so concurrent checkouts cannot oversell.
   const reservations = [];
@@ -92,9 +96,13 @@ const createGuestOrder = async (data, createdBy = null) => {
     checkoutId: data.checkoutId,
     phone,
     customerName: data.customerName || "",
+    occasion: data.occasion || "",
+    occasionDate: data.occasionDate || "",
     gstin: data.gstin || "",
     createdBy: createdBy ? { userId: createdBy._id, role: createdBy.role, name: createdBy.name || createdBy.email || "" } : null,
     productId: product._id,
+    productType: product.productType || "regular",
+    readyNowCategory: product.readyNowCategory || "",
     productName: product.name,
     productImage: product.images?.[0]?.url || "",
     category: category?.name || "",

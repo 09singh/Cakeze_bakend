@@ -203,9 +203,11 @@ const productSchema = new mongoose.Schema(
     categoryId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Category",
-      required: true,
+      default: null,
       index: true,
     },
+    productType: { type: String, enum: ["regular", "ready_now"], default: "regular", index: true },
+    readyNowCategory: { type: String, enum: ["cake", "benetto", "dessert", "pastries", "combos"], default: null, index: true },
 
     images: {
       type: [imageSchema],

@@ -14,6 +14,8 @@ const PRODUCT_CONSTANTS = {
   MAX_DESCRIPTION_LENGTH: 2000,
   MAX_BADGE_LENGTH: 50,
 
+  READY_NOW_CATEGORIES: ["cake", "benetto", "dessert", "pastries", "combos"],
+
   // Pricing
   MIN_PRICE: 0,
 

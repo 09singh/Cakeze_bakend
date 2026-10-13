@@ -70,6 +70,27 @@ const getCustomerProducts = async (req, res, next) => {
   }
 };
 
+const getReadyNowProducts = async (req, res, next) => {
+  try {
+    const result = await productService.getReadyNowProducts(req.query);
+    return res.status(200).json({ success: true, data: result.products, pagination: result.pagination });
+  } catch (error) { next(error); }
+};
+
+const getAdminReadyNowProducts = async (req, res, next) => {
+  try {
+    const products = await productService.getAdminReadyNowProducts();
+    return res.status(200).json({ success: true, data: products });
+  } catch (error) { next(error); }
+};
+
+const createReadyNowProduct = async (req, res, next) => {
+  try {
+    const product = await productService.createReadyNowProduct(req.body, req.files || []);
+    return res.status(201).json({ success: true, message: "Ready Now product created successfully", data: product });
+  } catch (error) { next(error); }
+};
+
 /*
 |--------------------------------------------------------------------------
 | CUSTOMER - GET PRODUCT BY ID
@@ -242,6 +263,9 @@ const removeProduct = async (req, res, next) => {
 
 module.exports = {
   createProduct,
+  getReadyNowProducts,
+  getAdminReadyNowProducts,
+  createReadyNowProduct,
 
   getCustomerProducts,
   getCustomerProductById,
