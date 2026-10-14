@@ -23,25 +23,51 @@ const actorDetails = (user) => ({
   name: user?.name || user?.email || "Admin",
 });
 
+
 function reconcileReceipts(receipts, { type = "all", mode = "all" } = {}) {
-  const typeReceipts = receipts.filter((entry) =>
-    type === "all" || entry.type.toLowerCase() === type
-  );
-  const items = typeReceipts.filter((entry) => {
-    if (mode === "all") return true;
-    if (mode === "other") return !["cash", "cod", "upi"].includes(entry.mode);
-    if (mode === "cash") return ["cash", "cod"].includes(entry.mode);
-    return entry.mode === mode;
+  const filteredReceipts = receipts.filter((entry) => {
+    const matchesType =
+      type === "all" ||
+      String(entry.type || "").toLowerCase() === type;
+
+    const entryMode = String(entry.mode || "").toLowerCase();
+
+    const matchesMode =
+      mode === "all" ||
+      (mode === "other" &&
+        !["cash", "cod", "upi"].includes(entryMode)) ||
+      (mode === "cash" &&
+        ["cash", "cod"].includes(entryMode)) ||
+      entryMode === mode;
+
+    return matchesType && matchesMode;
   });
-  const totals = typeReceipts.reduce((result, entry) => {
-    result.total += entry.amount;
-    if (entry.mode === "upi") result.upi += entry.amount;
-    else if (["cash", "cod"].includes(entry.mode)) result.cash += entry.amount;
-    else result.other += entry.amount;
-    if (entry.receivedByRole === "delivery") result.driver += entry.amount;
-    return result;
-  }, { total: 0, upi: 0, cash: 0, other: 0, driver: 0 });
-  return { items, totals };
+
+  const totals = filteredReceipts.reduce(
+    (result, entry) => {
+      const amount = Number(entry.amount || 0);
+      const method = String(entry.mode || "").toLowerCase();
+
+      result.total += amount;
+
+      if (method === "upi") {
+        result.upi += amount;
+      } else if (["cash", "cod"].includes(method)) {
+        result.cash += amount;
+      } else {
+        result.other += amount;
+      }
+
+      if (entry.receivedByRole === "delivery") {
+        result.driver += amount;
+      }
+
+      return result;
+    },
+    { total: 0, upi: 0, cash: 0, other: 0, driver: 0 }
+  );
+
+  return { items: filteredReceipts, totals };
 }
 
 function invoiceDetails(order) {
@@ -162,7 +188,7 @@ async function getFinanceData({ from, to, type = "all", mode = "all" }) {
         receivedByRole: event.actor?.role || "",
         amount,
       });
-    }
+    } 
     for (const refund of order.refunds || []) {
       if (refund.kind !== "refund" || refund.status !== "Refunded" || !inDate(refund.date || refund.createdAt)) continue;
       receipts.push({
