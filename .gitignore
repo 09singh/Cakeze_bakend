@@ -5,3 +5,7 @@ node_modules/
 !.env.example
 coverage/
 dist/
+# Secrets and credentials
+secrets/
+**/secrets/
+*.pem
