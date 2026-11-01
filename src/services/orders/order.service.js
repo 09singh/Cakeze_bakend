@@ -109,7 +109,7 @@ const createGuestOrder = async (data, createdBy = null) => {
     customerEmail: data.customerEmail ||
       (createdBy?.role === "customer" ? createdBy.email : null),
     customer: customerId,
-    customerName: data.customerName || "",
+    customerName: data.customerName || (createdBy?.role === "customer" ? createdBy.name : "") || "",
     occasion: data.occasion || "",
     occasionDate: data.occasionDate || "",
     gstin: data.gstin || "",
@@ -279,7 +279,7 @@ const createSharedOrder = async (data, customer, customerEmail = null) => {
     phone,
     customer: isAuthenticatedCustomer ? customer._id : null,
     customerEmail: email,
-    customerName: data.customerName,
+    customerName: data.customerName || (isAuthenticatedCustomer ? customer.name : ""),
     occasion: data.occasion,
     occasionDate: data.occasionDate || "",
     source: "website",
@@ -345,7 +345,7 @@ const createCustomerOrder = async (data, customer) => {
 
   const finalData = {
     ...data,
-    phone: customer.phone,
+    phone: customer.phone || data.phone,
   };
 
   return createGuestOrder(finalData, customer);

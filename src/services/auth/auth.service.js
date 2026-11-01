@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const User = require('./auth.model');
+const Order = require('../orders/order.model');
 const AppError = require('../../utils/AppError');
 const { signToken, revokeToken } = require('../../utils/jwt');
 
@@ -91,6 +92,58 @@ async function findOrCreateFirebaseCustomer(claims) {
   }
 
   return sanitizeUser(user);
+}
+
+async function loginCustomerByEmail(email) {
+  const cleanEmail = normalizeEmail(email);
+  let user = await User.findOne({ email: cleanEmail });
+
+  if (user && user.role !== 'customer') {
+    throw new AppError('This email cannot be used for a customer account.', 409, 'CUSTOMER_IDENTITY_CONFLICT');
+  }
+  if (user && !user.isActive) {
+    throw new AppError('Your account has been disabled.', 403, 'ACCOUNT_DISABLED');
+  }
+
+  if (!user) {
+    const previousOrder = await Order.findOne({ customerEmail: cleanEmail })
+      .sort({ createdAt: -1 })
+      .select('customerName')
+      .lean();
+    user = new User({
+      name: previousOrder?.customerName?.trim() || cleanEmail.split('@')[0],
+      email: cleanEmail,
+      role: 'customer',
+      isActive: true,
+    });
+  } else if (!user.name) {
+    const previousOrder = await Order.findOne({ customerEmail: cleanEmail })
+      .sort({ createdAt: -1 })
+      .select('customerName')
+      .lean();
+    if (previousOrder?.customerName?.trim()) user.name = previousOrder.customerName.trim();
+    else user.name = cleanEmail.split('@')[0];
+  }
+
+  try {
+    await user.save();
+  } catch (error) {
+    if (error.code !== 11000) throw error;
+    user = await User.findOne({ email: cleanEmail });
+    if (!user || user.role !== 'customer' || !user.isActive) {
+      throw new AppError('This email cannot be used for a customer account.', 409, 'CUSTOMER_IDENTITY_CONFLICT');
+    }
+  }
+
+  return {
+    user: sanitizeUser(user),
+    token: signToken({
+      sub: user._id.toString(),
+      role: 'customer',
+      type: 'customer',
+    }),
+    tokenType: 'Bearer',
+  };
 }
 
 async function staffLogin(email, password) {
@@ -198,6 +251,7 @@ function logoutUser(token) {
 
 module.exports = {
   findOrCreateFirebaseCustomer,
+  loginCustomerByEmail,
   staffLogin,
   registerStaffUser,
   getAuthenticatedUser,

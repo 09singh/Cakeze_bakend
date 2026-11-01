@@ -11,7 +11,10 @@ if (!process.env.OTP_HASH_SECRET) {
 process.env.NODE_ENV = 'production';
 
 const app = require('../../app');
-const { requireCustomer } = require('../auth/auth.middleware');
+const {
+  requireCustomer,
+  requireCustomerSession,
+} = require('../auth/auth.middleware');
 
 test('customer order endpoints reject requests without an authenticated session', async () => {
   const server = http.createServer(app);
@@ -27,6 +30,7 @@ test('customer order endpoints reject requests without an authenticated session'
       ['POST', '/api/v1/orders/me'],
       ['POST', '/api/v1/orders'],
       ['POST', '/api/v1/orders/shared-form'],
+      ['POST', '/api/v1/orders/email/orders'],
       ['POST', '/api/v1/orders/CZ0123456789ABCDEF0123/cancellation-request'],
       ['POST', '/api/v1/orders/CZ0123456789ABCDEF0123/cancel'],
       ['PATCH', '/api/v1/orders/CZ0123456789ABCDEF0123/customer-details'],
@@ -85,4 +89,19 @@ test('customer-only routes reject staff identity', () => {
 
   assert.equal(nextError.statusCode, 403);
   assert.equal(nextError.code, 'CUSTOMER_REQUIRED');
+});
+
+test('guest email verification is not a signed-in customer session', () => {
+  let nextError;
+  requireCustomerSession(
+    {
+      authType: 'email-verification',
+      user: { _id: null, role: 'customer', email: 'customer@example.com' },
+    },
+    {},
+    (error) => { nextError = error; }
+  );
+
+  assert.equal(nextError.statusCode, 403);
+  assert.equal(nextError.code, 'CUSTOMER_SESSION_REQUIRED');
 });

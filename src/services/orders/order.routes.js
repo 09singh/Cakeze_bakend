@@ -2,12 +2,19 @@
 const controller = require("./order.controller");
 const {
   createAdminOrderSchema,
+  createOrderSchema,
   createVerifiedEmailOrderSchema,
+  sharedOrderSchema,
   verifiedSharedOrderSchema,
   orderDetailsSchema,
   customerOrderDetailsSchema,
 } = require("./order.validator");
-const { authenticate, requireRole, requireCustomer } = require("../auth/auth.middleware");
+const {
+  authenticate,
+  requireRole,
+  requireCustomer,
+  requireCustomerSession,
+} = require("../auth/auth.middleware");
 
 
 const router = express.Router();
@@ -58,13 +65,13 @@ const validate = (schema, source) => (req, res, next) => {
 };
 
 router.post("/admin", ...admin, validate(createAdminOrderSchema, "body"), controller.createAdminOrder);
-router.post("/shared-form", authenticate, requireCustomer, validate(verifiedSharedOrderSchema, "body"), controller.createSharedOrder);
+router.post("/shared-form", authenticate, requireCustomerSession, validate(sharedOrderSchema, "body"), controller.createSharedOrder);
 router.post("/email", validate(createVerifiedEmailOrderSchema, "body"), controller.createEmailVerifiedOrder);
 router.post("/email/shared-form", validate(verifiedSharedOrderSchema, "body"), controller.createVerifiedSharedOrder);
-router.post("/email/orders", controller.listEmailOrders);
-router.get("/me", authenticate, requireCustomer, controller.listCustomerOrders);
-router.post("/me", authenticate, requireCustomer, validate(createVerifiedEmailOrderSchema, "body"), controller.createCustomerOrder);
-router.post("/", authenticate, requireCustomer, validate(createVerifiedEmailOrderSchema, "body"), controller.createCustomerOrder);
+router.post("/email/orders", authenticate, requireCustomerSession, controller.listCustomerOrders);
+router.get("/me", authenticate, requireCustomerSession, controller.listCustomerOrders);
+router.post("/me", authenticate, requireCustomerSession, validate(createOrderSchema, "body"), controller.createCustomerOrder);
+router.post("/", authenticate, requireCustomerSession, validate(createOrderSchema, "body"), controller.createCustomerOrder);
 router.get("/manager/pickups", ...manager, controller.listManagerPickups);
 router.patch("/:orderId/pickup/complete", ...manager, controller.completeManagerPickup);
 router.get("/", ...staff, controller.listOrders);

@@ -9,14 +9,16 @@ const send = (res, data, status = 200) => res.status(status).json({ success: tru
 const createCustomerOrder = async (req, res, next) => {
   try {
     const { customerEmail, emailVerificationToken, ...orderData } = req.body;
-    const verified = await emailOtpService.validateToken(
-      emailVerificationToken,
-      customerEmail,
-      orderData.checkoutId
-    );
+    const verifiedEmail = req.authType === 'customer' && req.user?._id
+      ? req.user.email
+      : (await emailOtpService.validateToken(
+        emailVerificationToken,
+        customerEmail,
+        orderData.checkoutId
+      )).email;
     return send(res, await service.createCustomerOrder({
       ...orderData,
-      customerEmail: verified.email,
+      customerEmail: verifiedEmail,
     }, req.user), 201);
   } catch (error) { return next(error); }
 };
@@ -56,12 +58,14 @@ const createAdminOrder = async (req, res, next) => {
 const createSharedOrder = async (req, res, next) => {
   try {
     const { customerEmail, emailVerificationToken, ...orderData } = req.body;
-    const verified = await emailOtpService.validateToken(
-      emailVerificationToken,
-      customerEmail,
-      orderData.checkoutId
-    );
-    return send(res, await service.createSharedOrder(orderData, req.user, verified.email), 201);
+    const verifiedEmail = req.authType === "customer" && req.user?._id
+      ? req.user.email
+      : (await emailOtpService.validateToken(
+        emailVerificationToken,
+        customerEmail,
+        orderData.checkoutId
+      )).email;
+    return send(res, await service.createSharedOrder(orderData, req.user, verifiedEmail), 201);
   }
   catch (error) { return next(error); }
 };
@@ -91,7 +95,14 @@ const updateAdminDetails = async (req, res, next) => {
 const listCustomerOrders = async (req, res, next) => {
   try {
     const filter = req.user?._id
-      ? { customer: req.user._id }
+      ? req.user.email
+        ? {
+          $or: [
+            { customer: req.user._id },
+            { customerEmail: req.user.email },
+          ],
+        }
+        : { customer: req.user._id }
       : { customerEmail: req.user.email };
     const orders = await Order.find(filter).sort({ createdAt: -1 }).lean();
     return send(res, orders);

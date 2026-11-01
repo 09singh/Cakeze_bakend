@@ -50,12 +50,13 @@ async function authenticate(req, res, next) {
     }
 
     const payload = verifyToken(token);
-    const staffRoles = ['admin', 'kitchen', 'delivery', 'manager'];
+    const authenticatedRoles = ['admin', 'kitchen', 'delivery', 'manager', 'customer'];
+    const expectedType = payload?.role === 'customer' ? 'customer' : 'staff';
     if (
       !payload ||
       typeof payload.sub !== 'string' ||
-      !staffRoles.includes(payload.role) ||
-      payload.type !== 'staff'
+      !authenticatedRoles.includes(payload.role) ||
+      payload.type !== expectedType
     ) {
       throw new AppError('Authentication failed.', 401, 'AUTH_INVALID');
     }
@@ -100,9 +101,17 @@ function requireCustomer(req, res, next) {
   return next();
 }
 
+function requireCustomerSession(req, res, next) {
+  if (req.authType !== 'customer' || req.user?.role !== 'customer' || !req.user?._id) {
+    return next(new AppError('A signed-in customer account is required.', 403, 'CUSTOMER_SESSION_REQUIRED'));
+  }
+  return next();
+}
+
 module.exports = {
   staffLoginLimiter,
   authenticate,
   requireRole,
   requireCustomer,
+  requireCustomerSession,
 };

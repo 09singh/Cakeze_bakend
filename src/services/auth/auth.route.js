@@ -3,7 +3,8 @@ const authController = require('./auth.controller');
 const authMiddleware = require('./auth.middleware');
 const authValidation = require('./auth.validation');
 const Joi = require('joi');
-const { registerStaffUser } = require('./auth.service');
+const authService = require('./auth.service');
+const { registerStaffUser } = authService;
 const User = require('./auth.model');
 const mongoose = require('mongoose');
 const rateLimit = require('express-rate-limit');
@@ -40,6 +41,19 @@ router.post('/email-otp/verify', emailOtpVerifyLimiter, async (req, res, next) =
   try {
     const result = await emailOtpService.verify(req.body || {});
     return res.status(200).json({ success: true, data: result });
+  } catch (error) { return next(error); }
+});
+
+router.post('/email-otp/customer-session', emailOtpVerifyLimiter, async (req, res, next) => {
+  try {
+    const { email, checkoutId, verificationToken } = req.body || {};
+    const verified = await emailOtpService.validateToken(
+      verificationToken,
+      email,
+      checkoutId
+    );
+    const result = await authService.loginCustomerByEmail(verified.email);
+    return res.status(200).json({ success: true, ...result });
   } catch (error) { return next(error); }
 });
 
