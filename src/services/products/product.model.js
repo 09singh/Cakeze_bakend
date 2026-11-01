@@ -156,6 +156,11 @@ const pricingSchema = new mongoose.Schema(
       uppercase: true,
       default: "INR",
     },
+    collection: {
+      type: String,
+      enum: ["standard", "everyday_favorite", "trending_collection", "signature_collection"],
+      default: "standard",
+    },
   },
   {
     _id: false,
@@ -207,7 +212,7 @@ const productSchema = new mongoose.Schema(
       index: true,
     },
     productType: { type: String, enum: ["regular", "ready_now"], default: "regular", index: true },
-    readyNowCategory: { type: String, enum: ["cake", "benetto", "dessert", "pastries", "combos"], default: null, index: true },
+    readyNowCategory: { type: String, enum: ["cake", "benetto", "dessert", "pastries", "combos", "mini_delight", "surprise_hampers"], default: null, index: true },
 
     images: {
       type: [imageSchema],

@@ -13,6 +13,16 @@ const userSchema = new mongoose.Schema(
       trim: true,
       default: null,
     },
+    firebaseUid: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    authProvider: {
+      type: String,
+      enum: ['firebase', null],
+      default: null,
+    },
     email: {
       type: String,
       trim: true,
@@ -26,7 +36,7 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['customer', 'admin', 'kitchen', 'delivery'],
+      enum: ['customer', 'admin', 'kitchen', 'delivery', 'manager'],
       default: 'customer',
     },
     isActive: {
@@ -59,6 +69,16 @@ userSchema.index(
   }
 );
 
+userSchema.index(
+  { firebaseUid: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      firebaseUid: { $type: 'string' },
+    },
+  }
+);
+
 userSchema.methods.comparePassword = async function comparePassword(candidatePassword) {
   if (!this.passwordHash) {
     return false;
@@ -72,6 +92,7 @@ userSchema.methods.toSafeObject = function toSafeObject() {
     id: this._id.toString(),
     name: this.name,
     phone: this.phone,
+    firebaseUid: this.firebaseUid,
     email: this.email,
     role: this.role,
     isActive: this.isActive,

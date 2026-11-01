@@ -1,12 +1,23 @@
 ﻿const express = require("express");
 const controller = require("./order.controller");
-const { createOrderSchema, createAdminOrderSchema, lookupOrderSchema } = require("./order.validator");
-const { authenticate, requireRole } = require("../auth/auth.middleware");
+const {
+  createAdminOrderSchema,
+  createVerifiedEmailOrderSchema,
+  verifiedSharedOrderSchema,
+  orderDetailsSchema,
+  customerOrderDetailsSchema,
+} = require("./order.validator");
+const { authenticate, requireRole, requireCustomer } = require("../auth/auth.middleware");
 
 
 const router = express.Router();
 const staff = [authenticate, requireRole("admin", "kitchen", "delivery")];
 const admin = [authenticate, requireRole("admin")];
+const manager = [authenticate, requireRole("manager")];
+const cancellationAccess = (req, res, next) => {
+  if (req.user?.role === "customer") return requireCustomer(req, res, next);
+  return requireRole("delivery", "admin")(req, res, next);
+};
 
 const validate = (schema, source) => (req, res, next) => {
   const { error, value } = schema.validate(req[source], { abortEarly: false, stripUnknown: true });
@@ -47,14 +58,24 @@ const validate = (schema, source) => (req, res, next) => {
 };
 
 router.post("/admin", ...admin, validate(createAdminOrderSchema, "body"), controller.createAdminOrder);
-router.post("/", validate(createOrderSchema, "body"), controller.createOrder);
-router.get("/lookup", validate(lookupOrderSchema, "query"), controller.getOrder);
+router.post("/shared-form", authenticate, requireCustomer, validate(verifiedSharedOrderSchema, "body"), controller.createSharedOrder);
+router.post("/email", validate(createVerifiedEmailOrderSchema, "body"), controller.createEmailVerifiedOrder);
+router.post("/email/shared-form", validate(verifiedSharedOrderSchema, "body"), controller.createVerifiedSharedOrder);
+router.post("/email/orders", controller.listEmailOrders);
+router.get("/me", authenticate, requireCustomer, controller.listCustomerOrders);
+router.post("/me", authenticate, requireCustomer, validate(createVerifiedEmailOrderSchema, "body"), controller.createCustomerOrder);
+router.post("/", authenticate, requireCustomer, validate(createVerifiedEmailOrderSchema, "body"), controller.createCustomerOrder);
+router.get("/manager/pickups", ...manager, controller.listManagerPickups);
+router.patch("/:orderId/pickup/complete", ...manager, controller.completeManagerPickup);
 router.get("/", ...staff, controller.listOrders);
 router.patch("/:orderId/status", ...staff, controller.updateStatus);
-router.post("/:orderId/cancellation-request", controller.requestCancellation);
+router.post("/:orderId/cancellation-request", authenticate, requireCustomer, controller.requestCancellation);
+router.post("/:orderId/cancel", authenticate, cancellationAccess, controller.cancelOrder);
+router.patch("/:orderId/customer-details", authenticate, requireCustomer, validate(customerOrderDetailsSchema, "body"), controller.updateCustomerDetails);
+router.patch("/:orderId/admin-details", ...admin, validate(orderDetailsSchema, "body"), controller.updateAdminDetails);
 router.patch("/:orderId/cancellation-decision", ...admin, controller.decideCancellation);
 router.post("/:orderId/payment", ...admin, controller.recordPayment);
-router.post("/:orderId/payment/collect", authenticate, requireRole("delivery"), controller.recordPayment);
+router.post("/:orderId/payment/collect", authenticate, requireRole("delivery", "admin"), controller.recordPayment);
 router.post("/:orderId/delivery-attempt", ...staff, controller.recordDeliveryAttempt);
 router.patch("/:orderId/assignment", ...admin, controller.assignDelivery);
 router.patch("/:orderId/admin-override", ...admin, controller.adminOverride);

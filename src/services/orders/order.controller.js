@@ -1,12 +1,51 @@
 ﻿const service = require("./order.service");
+const Order = require("./order.model");
 const lifecycle = require("./order.lifecycle");
 const AppError = require("../../utils/AppError");
+const { emailOtpService } = require("../auth/emailOtp.service");
 
 const send = (res, data, status = 200) => res.status(status).json({ success: true, data });
 
-const createOrder = async (req, res, next) => {
-  try { return send(res, await service.createGuestOrder(req.body), 201); }
-  catch (error) { return next(error); }
+const createCustomerOrder = async (req, res, next) => {
+  try {
+    const { customerEmail, emailVerificationToken, ...orderData } = req.body;
+    const verified = await emailOtpService.validateToken(
+      emailVerificationToken,
+      customerEmail,
+      orderData.checkoutId
+    );
+    return send(res, await service.createCustomerOrder({
+      ...orderData,
+      customerEmail: verified.email,
+    }, req.user), 201);
+  } catch (error) { return next(error); }
+};
+
+const createEmailVerifiedOrder = async (req, res, next) => {
+  try {
+    const { customerEmail, emailVerificationToken, ...orderData } = req.body;
+    const verified = await emailOtpService.validateToken(
+      emailVerificationToken,
+      customerEmail,
+      orderData.checkoutId
+    );
+    return send(res, await service.createGuestOrder({
+      ...orderData,
+      customerEmail: verified.email,
+    }), 201);
+  } catch (error) { return next(error); }
+};
+
+const createVerifiedSharedOrder = async (req, res, next) => {
+  try {
+    const { customerEmail, emailVerificationToken, ...orderData } = req.body;
+    const verified = await emailOtpService.validateToken(
+      emailVerificationToken,
+      customerEmail,
+      orderData.checkoutId
+    );
+    return send(res, await service.createSharedOrder(orderData, null, verified.email), 201);
+  } catch (error) { return next(error); }
 };
 
 const createAdminOrder = async (req, res, next) => {
@@ -14,9 +53,64 @@ const createAdminOrder = async (req, res, next) => {
   catch (error) { return next(error); }
 };
 
-const getOrder = async (req, res, next) => {
-  try { return send(res, await service.getGuestOrder(req.query)); }
+const createSharedOrder = async (req, res, next) => {
+  try {
+    const { customerEmail, emailVerificationToken, ...orderData } = req.body;
+    const verified = await emailOtpService.validateToken(
+      emailVerificationToken,
+      customerEmail,
+      orderData.checkoutId
+    );
+    return send(res, await service.createSharedOrder(orderData, req.user, verified.email), 201);
+  }
   catch (error) { return next(error); }
+};
+
+const updateCustomerDetails = async (req, res, next) => {
+  try {
+    const { version, ...details } = req.body;
+    return send(res, await lifecycle.updateOrderDetails(
+      req.params.orderId,
+      details,
+      { expectedVersion: version, user: req.user }
+    ));
+  } catch (error) { return next(error); }
+};
+
+const updateAdminDetails = async (req, res, next) => {
+  try {
+    const { version, ...details } = req.body;
+    return send(res, await lifecycle.updateOrderDetails(
+      req.params.orderId,
+      details,
+      { user: req.user, expectedVersion: version, admin: true }
+    ));
+  } catch (error) { return next(error); }
+};
+
+const listCustomerOrders = async (req, res, next) => {
+  try {
+    const filter = req.user?._id
+      ? { customer: req.user._id }
+      : { customerEmail: req.user.email };
+    const orders = await Order.find(filter).sort({ createdAt: -1 }).lean();
+    return send(res, orders);
+  } catch (error) { return next(error); }
+};
+
+const listEmailOrders = async (req, res, next) => {
+  try {
+    const { customerEmail, emailVerificationToken, checkoutId } = req.body || {};
+    const verified = await emailOtpService.validateToken(
+      emailVerificationToken,
+      customerEmail,
+      checkoutId
+    );
+    const orders = await Order.find({ customerEmail: verified.email })
+      .sort({ createdAt: -1 })
+      .lean();
+    return send(res, orders);
+  } catch (error) { return next(error); }
 };
 
 const listOrders = async (req, res, next) => {
@@ -28,6 +122,16 @@ const listOrders = async (req, res, next) => {
     }
     return send(res, await lifecycle.listOrders(req.user, req.query));
   } catch (error) { return next(error); }
+};
+
+const listManagerPickups = async (req, res, next) => {
+  try { return send(res, await lifecycle.listManagerPickupOrders()); }
+  catch (error) { return next(error); }
+};
+
+const completeManagerPickup = async (req, res, next) => {
+  try { return send(res, await lifecycle.completeManagerPickup(req.params.orderId, req.user)); }
+  catch (error) { return next(error); }
 };
 
 const updateStatus = async (req, res, next) => {
@@ -42,11 +146,34 @@ const updateStatus = async (req, res, next) => {
 
 const requestCancellation = async (req, res, next) => {
   try {
-    const { phone, reason } = req.body || {};
-    if (typeof phone !== "string" || typeof reason !== "string" || reason.trim().length < 3 || reason.length > 500) {
-      throw new AppError("A valid phone number and cancellation reason are required.", 400, "INVALID_CANCELLATION");
+    const { reason } = req.body || {};
+    if (typeof reason !== "string" || reason.trim().length < 3 || reason.length > 500) {
+      throw new AppError("A valid cancellation reason is required.", 400, "INVALID_CANCELLATION");
     }
-    return send(res, await lifecycle.requestCancellation(req.params.orderId, { phone, reason: reason.trim() }, null));
+    let customer = req.user;
+    if (customer?.role !== "customer") {
+      const { customerEmail, emailVerificationToken, checkoutId } = req.body || {};
+      if (!customerEmail || !emailVerificationToken || !checkoutId) {
+        throw new AppError("Verify the email linked to this order before cancelling it.", 401, "EMAIL_VERIFICATION_REQUIRED");
+      }
+      const verified = await emailOtpService.validateToken(
+        emailVerificationToken,
+        customerEmail,
+        checkoutId
+      );
+      customer = { role: "customer", email: verified.email };
+    }
+    return send(res, await lifecycle.requestCancellation(req.params.orderId, { reason: reason.trim() }, customer));
+  } catch (error) { return next(error); }
+};
+
+const cancelOrder = async (req, res, next) => {
+  try {
+    const { reason } = req.body || {};
+    if (typeof reason !== "string" || reason.trim().length < 3 || reason.length > 500) {
+      throw new AppError("A valid cancellation reason is required.", 400, "INVALID_CANCELLATION");
+    }
+    return send(res, await lifecycle.cancelOrder(req.params.orderId, reason.trim(), req.user));
   } catch (error) { return next(error); }
 };
 
@@ -105,4 +232,4 @@ const adminOverride = async (req, res, next) => {
   } catch (error) { return next(error); }
 };
 
-module.exports = { createOrder, createAdminOrder, getOrder, listOrders, updateStatus, requestCancellation, decideCancellation, recordPayment, recordDeliveryAttempt, assignDelivery, adminOverride };
+module.exports = { createCustomerOrder, createEmailVerifiedOrder, createVerifiedSharedOrder, createAdminOrder, createSharedOrder, updateCustomerDetails, updateAdminDetails, listCustomerOrders, listEmailOrders, listOrders, listManagerPickups, completeManagerPickup, updateStatus, requestCancellation, cancelOrder, decideCancellation, recordPayment, recordDeliveryAttempt, assignDelivery, adminOverride };

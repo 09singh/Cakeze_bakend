@@ -13,6 +13,7 @@ const inventoryRouter = require('./services/inventory/inventory.routes');
 const couponRouter = require('./services/coupons/coupon.routes');
 const financeRouter = require('./services/finance/finance.routes');
 const analyticsRouter = require('./services/analytics/analytics.routes');
+const posRouter = require('./services/pos/pos.routes');
 
 // const { globalRateLimiter } = require('./middleware/rateLimit.middleware');
 
@@ -125,6 +126,7 @@ app.use(
 
 app.use('/api/v1/addons', addonRouter);
 app.use('/api/v1/orders', orderRouter);
+app.use('/api/v1/pos', posRouter);
 app.use('/api/v1/inventory', inventoryRouter);
 app.use('/api/v1/coupons', couponRouter);
 app.use('/api/v1/finance', financeRouter);

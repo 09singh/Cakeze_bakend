@@ -13,7 +13,7 @@ const bulk = async (req, res, next) => {
   catch (error) { next(error); }
 };
 const orders = async (req, res, next) => {
-  try { res.json({ success: true, data: await service.getCustomerOrders(req.params.phone) }); }
+  try { res.json({ success: true, data: await service.getCustomerOrders(req.params.customerId) }); }
   catch (error) { next(error); }
 };
 module.exports = { list, create, bulk, orders };

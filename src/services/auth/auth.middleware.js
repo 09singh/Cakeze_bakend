@@ -1,29 +1,11 @@
 const rateLimit = require('express-rate-limit');
+const jwt = require('jsonwebtoken');
 const AppError = require('../../utils/AppError');
 const { verifyToken } = require('../../utils/jwt');
 const User = require('./auth.model');
-
-const customerOtpRequestLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 3,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    message: 'Too many OTP requests. Please wait a minute and try again.',
-  },
-  statusCode: 429,
-});
-
-const customerOtpVerifyLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000,
-  max: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    message: 'Too many OTP verification attempts. Please wait and try again.',
-  },
-  statusCode: 429,
-});
+const authService = require('./auth.service');
+const firebaseAdmin = require('./firebase.admin');
+const { emailOtpService } = require('./emailOtp.service');
 
 const staffLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -45,15 +27,35 @@ async function authenticate(req, res, next) {
       throw new AppError('Authentication token is required.', 401, 'TOKEN_REQUIRED');
     }
 
+    const unverifiedClaims = jwt.decode(token);
+    if (unverifiedClaims?.type === 'email-verification') {
+      const verified = await emailOtpService.validateToken(
+        token,
+        unverifiedClaims.email,
+        unverifiedClaims.checkoutId
+      );
+      req.user = { _id: null, role: 'customer', email: verified.email, phone: '' };
+      req.authType = 'email-verification';
+      req.authToken = token;
+      return next();
+    }
+
+    if (unverifiedClaims?.iss?.startsWith('https://securetoken.google.com/')) {
+      const claims = await firebaseAdmin.verifyIdToken(token);
+      const user = await authService.findOrCreateFirebaseCustomer(claims);
+      req.user = await User.findById(user.id);
+      req.authType = 'customer';
+      req.authToken = token;
+      return next();
+    }
+
     const payload = verifyToken(token);
-    const staffRoles = ['admin', 'kitchen', 'delivery'];
+    const staffRoles = ['admin', 'kitchen', 'delivery', 'manager'];
     if (
       !payload ||
       typeof payload.sub !== 'string' ||
-      !['customer', 'admin', 'kitchen', 'delivery'].includes(payload.role) ||
-      !['customer', 'staff'].includes(payload.type) ||
-      (payload.type === 'staff' && !staffRoles.includes(payload.role)) ||
-      (payload.type === 'customer' && payload.role !== 'customer')
+      !staffRoles.includes(payload.role) ||
+      payload.type !== 'staff'
     ) {
       throw new AppError('Authentication failed.', 401, 'AUTH_INVALID');
     }
@@ -91,10 +93,16 @@ function requireRole(...roles) {
   };
 }
 
+function requireCustomer(req, res, next) {
+  if (!['customer', 'email-verification'].includes(req.authType) || req.user?.role !== 'customer') {
+    return next(new AppError('Customer authentication is required.', 403, 'CUSTOMER_REQUIRED'));
+  }
+  return next();
+}
+
 module.exports = {
-  customerOtpRequestLimiter,
-  customerOtpVerifyLimiter,
   staffLoginLimiter,
   authenticate,
   requireRole,
+  requireCustomer,
 };

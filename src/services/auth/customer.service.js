@@ -1,6 +1,7 @@
 ﻿const User = require('./auth.model');
 const Order = require('../orders/order.model');
 const AppError = require('../../utils/AppError');
+const mongoose = require('mongoose');
 
 const normalizePhone = (value) => String(value || '').replace(/\D/g, '');
 const toCustomer = (user, stats = {}) => ({
@@ -18,8 +19,9 @@ async function listCustomers() {
   const [users, orderStats] = await Promise.all([
     User.find({ role: 'customer' }).select('name phone email createdAt').lean(),
     Order.aggregate([
+      { $match: { customer: { $ne: null } } },
       { $group: {
-        _id: '$phone',
+        _id: '$customer',
         orderCount: { $sum: 1 },
         totalSpent: { $sum: '$pricing.total' },
         lastOrderAt: { $max: '$createdAt' },
@@ -28,17 +30,13 @@ async function listCustomers() {
       } },
     ]),
   ]);
-  const statsByPhone = new Map(orderStats.map((stats) => [normalizePhone(stats._id), stats]));
-  const customersByPhone = new Map();
+  const statsByCustomer = new Map(orderStats.map((stats) => [String(stats._id), stats]));
+  const customersById = new Map();
   users.forEach((user) => {
-    const phone = normalizePhone(user.phone);
-    if (phone) customersByPhone.set(phone, toCustomer(user, statsByPhone.get(phone)));
+    const id = String(user._id);
+    customersById.set(id, toCustomer(user, statsByCustomer.get(id)));
   });
-  orderStats.forEach((stats) => {
-    const phone = normalizePhone(stats._id);
-    if (phone && !customersByPhone.has(phone)) customersByPhone.set(phone, toCustomer(null, { ...stats, phone }));
-  });
-  return Array.from(customersByPhone.values()).sort((a, b) => (b.lastOrderAt || b.createdAt || 0) - (a.lastOrderAt || a.createdAt || 0));
+  return Array.from(customersById.values()).sort((a, b) => (b.lastOrderAt || b.createdAt || 0) - (a.lastOrderAt || a.createdAt || 0));
 }
 
 async function saveCustomer(input) {
@@ -77,10 +75,13 @@ async function importCustomers(rows) {
   return result;
 }
 
-async function getCustomerOrders(rawPhone) {
-  const phone = normalizePhone(rawPhone);
-  if (phone.length < 10) throw new AppError('Invalid customer phone number.', 400, 'INVALID_CUSTOMER_PHONE');
-  return Order.find({ phone }).sort({ createdAt: -1 }).limit(500).lean();
+async function getCustomerOrders(customerId) {
+  if (!mongoose.Types.ObjectId.isValid(customerId)) {
+    throw new AppError('Invalid customer reference.', 400, 'INVALID_CUSTOMER_ID');
+  }
+  const customer = await User.findOne({ _id: customerId, role: 'customer' }).select('_id');
+  if (!customer) throw new AppError('Customer not found.', 404, 'CUSTOMER_NOT_FOUND');
+  return Order.find({ customer: customer._id }).sort({ createdAt: -1 }).limit(500).lean();
 }
 
 module.exports = { listCustomers, saveCustomer, importCustomers, getCustomerOrders };

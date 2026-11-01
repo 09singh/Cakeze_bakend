@@ -1,19 +1,5 @@
 const { body, validationResult } = require('express-validator');
 
-const phoneValidator = body('phone')
-  .trim()
-  .notEmpty()
-  .withMessage('Phone number is required.')
-  .matches(/^\+?[1-9]\d{8,14}$/)
-  .withMessage('Phone number must be a valid international format.');
-
-const otpValidator = body('otp')
-  .trim()
-  .notEmpty()
-  .withMessage('OTP is required.')
-  .matches(/^\d{4,6}$/)
-  .withMessage('OTP must be a 4 to 6 digit number.');
-
 const emailValidator = body('email')
   .trim()
   .notEmpty()
@@ -45,8 +31,6 @@ function validateRequest(req, res, next) {
 }
 
 module.exports = {
-  customerPhoneValidation: [phoneValidator],
-  customerOtpValidation: [phoneValidator, otpValidator],
   staffLoginValidation: [emailValidator, passwordValidator],
   validateRequest,
 };

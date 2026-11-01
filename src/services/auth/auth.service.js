@@ -1,10 +1,16 @@
 const bcrypt = require('bcryptjs');
 const User = require('./auth.model');
-const otpProvider = require('./otp.provider');
 const AppError = require('../../utils/AppError');
 const { signToken, revokeToken } = require('../../utils/jwt');
 
-const normalizePhone = (value) => (typeof value === 'string' ? value.replace(/\s+/g, '').trim() : '');
+const normalizePhone = (value) => {
+  if (typeof value !== 'string') return '';
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.length === 10) return `+91${digits}`;
+  if (digits.length > 10 && digits.startsWith('91')) return `+${digits}`;
+  return `+${digits}`;
+};
 const normalizeEmail = (value) => (typeof value === 'string' ? value.trim().toLowerCase() : '');
 
 function sanitizeUser(user) {
@@ -16,6 +22,7 @@ function sanitizeUser(user) {
     id: user._id.toString(),
     name: user.name,
     phone: user.phone,
+    firebaseUid: user.firebaseUid,
     email: user.email,
     role: user.role,
     isActive: user.isActive,
@@ -24,65 +31,66 @@ function sanitizeUser(user) {
   };
 }
 
-async function requestCustomerOtp(phoneNumber) {
-  const phone = normalizePhone(phoneNumber);
-
-  if (!phone) {
-    throw new AppError('Phone number is required.', 400, 'PHONE_REQUIRED');
+async function findOrCreateFirebaseCustomer(claims) {
+  const phone = normalizePhone(claims.phone_number);
+  if (
+    typeof claims.uid !== 'string' ||
+    !phone ||
+    !/^\+[1-9]\d{8,14}$/.test(phone) ||
+    claims.firebase?.sign_in_provider !== 'phone'
+  ) {
+    throw new AppError('A verified Firebase phone session is required.', 401, 'PHONE_AUTH_REQUIRED');
   }
 
-  let user = await User.findOne({ phone });
+  let user = await User.findOne({ firebaseUid: claims.uid });
+  if (!user) {
+    const phoneMatches = await User.find({
+      phone: { $in: [phone, phone.replace(/\D/g, '')] },
+    }).limit(2);
+    if (phoneMatches.length > 1) {
+      throw new AppError('This phone number is linked to multiple customer records.', 409, 'CUSTOMER_IDENTITY_CONFLICT');
+    }
+    [user] = phoneMatches;
+  }
+
+  if (user && user.role !== 'customer') {
+    throw new AppError('This phone number cannot be used for a customer account.', 409, 'CUSTOMER_IDENTITY_CONFLICT');
+  }
+  if (user?.firebaseUid && user.firebaseUid !== claims.uid) {
+    throw new AppError('This phone number is linked to another verified account.', 409, 'CUSTOMER_IDENTITY_CONFLICT');
+  }
+  if (user && !user.isActive) {
+    throw new AppError('Your account has been disabled.', 403, 'ACCOUNT_DISABLED');
+  }
 
   if (!user) {
-    user = await User.create({
-      name: 'Customer',
+    user = new User({
+      name: claims.name || 'Customer',
       phone,
+      firebaseUid: claims.uid,
+      authProvider: 'firebase',
       role: 'customer',
       isActive: true,
     });
+  } else {
+    user.phone = phone;
+    user.firebaseUid = claims.uid;
+    user.authProvider = 'firebase';
+    if (claims.name && (!user.name || user.name === 'Customer')) user.name = claims.name;
   }
 
-  await otpProvider.sendOtp({ phone });
-
-  return {
-    message: 'OTP sent successfully. Please check the code to continue.',
-    user: sanitizeUser(user),
-  };
-}
-
-async function verifyCustomerOtp(phoneNumber, otpCode) {
-  const phone = normalizePhone(phoneNumber);
-
-  if (!phone) {
-    throw new AppError('Phone number is required.', 400, 'PHONE_REQUIRED');
+  try {
+    await user.save();
+  } catch (error) {
+    if (error.code !== 11000) throw error;
+    const concurrentUser = await User.findOne({ firebaseUid: claims.uid });
+    if (!concurrentUser || concurrentUser.role !== 'customer' || !concurrentUser.isActive) {
+      throw new AppError('This verified phone number is already linked to another account.', 409, 'CUSTOMER_IDENTITY_CONFLICT');
+    }
+    user = concurrentUser;
   }
 
-  if (!otpCode || !/^\d{4,6}$/.test(String(otpCode))) {
-    throw new AppError('A valid OTP is required.', 400, 'OTP_INVALID');
-  }
-
-  await otpProvider.verifyOtp({ phone, otp: otpCode });
-
-  const user = await User.findOne({ phone });
-
-  if (!user) {
-    throw new AppError('User not found.', 404, 'USER_NOT_FOUND');
-  }
-
-  user.isActive = true;
-  await user.save();
-
-  const token = signToken({
-    sub: user._id.toString(),
-    role: user.role,
-    type: 'customer',
-  });
-
-  return {
-    user: sanitizeUser(user),
-    token,
-    tokenType: 'Bearer',
-  };
+  return sanitizeUser(user);
 }
 
 async function staffLogin(email, password) {
@@ -100,7 +108,7 @@ async function staffLogin(email, password) {
 
 if (
   !user ||
-  !['admin', 'kitchen', 'delivery'].includes(user.role)
+  !['admin', 'kitchen', 'delivery', 'manager'].includes(user.role)
 ) {
   throw new AppError(
     'Invalid email or password.',
@@ -143,7 +151,7 @@ async function registerStaffUser({ name, email, password, role = 'admin' }) {
     throw new AppError('Password must be at least 8 characters long.', 400, 'PASSWORD_WEAK');
   }
 
-  if (!['admin', 'kitchen', 'delivery'].includes(role)) {
+  if (!['admin', 'kitchen', 'delivery', 'manager'].includes(role)) {
     throw new AppError('Invalid staff role.', 400, 'INVALID_ROLE');
   }
 
@@ -189,8 +197,7 @@ function logoutUser(token) {
 }
 
 module.exports = {
-  requestCustomerOtp,
-  verifyCustomerOtp,
+  findOrCreateFirebaseCustomer,
   staffLogin,
   registerStaffUser,
   getAuthenticatedUser,

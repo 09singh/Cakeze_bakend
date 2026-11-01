@@ -14,11 +14,31 @@ const orderSchema = new mongoose.Schema(
     orderId: { type: String, required: true, unique: true, index: true },
     checkoutId: { type: String, required: true, unique: true, index: true },
     phone: { type: String, required: true, index: true },
+    customerEmail: { type: String, lowercase: true, trim: true, default: null, index: true },
+    customer: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, index: true },
     customerName: { type: String, trim: true, default: "", maxlength: 100 },
     occasion: { type: String, trim: true, default: "", maxlength: 100 },
     occasionDate: { type: String, default: "" },
     gstin: { type: String, trim: true, uppercase: true, default: "", maxlength: 15 },
     createdBy: { type: mongoose.Schema.Types.Mixed, default: null },
+    source: { type: String, enum: ["website", "admin", "pos"], default: "website", index: true },
+    items: [{
+      productId: { type: mongoose.Schema.Types.ObjectId, ref: "Product" },
+      name: { type: String, required: true },
+      itemType: {
+        type: String,
+        enum: ["Cake", "Cupcake", "Brownie", "Cookie", "Tarts", "Dessert jar", "Gift box", "Others"],
+        default: "Cake",
+      },
+      size: { type: String, default: "" },
+      weight: { type: Number, min: 0, default: 0 },
+      flavour: { type: String, default: "" },
+      productImage: { type: String, default: "" },
+      customisation: { type: mongoose.Schema.Types.Mixed, default: {} },
+      quantity: { type: Number, required: true, min: 1 },
+      unitPrice: { type: Number, required: true, min: 0 },
+      lineTotal: { type: Number, required: true, min: 0 },
+    }],
     productId: { type: mongoose.Schema.Types.ObjectId, ref: "Product", required: true },
     productType: { type: String, enum: ["regular", "ready_now"], default: "regular" },
     readyNowCategory: { type: String, default: "" },
@@ -89,10 +109,8 @@ const orderSchema = new mongoose.Schema(
 );
 
 orderSchema.index({ phone: 1, orderId: 1 }, { unique: true });
+orderSchema.index({ customer: 1, createdAt: -1 });
 orderSchema.index({ "delivery.date": 1, status: 1 });
 orderSchema.index({ assignedDelivery: 1, status: 1 });
 
 module.exports = mongoose.model("Order", orderSchema);
-
-
-

@@ -104,6 +104,9 @@ const pricingSchema = Joi.object({
     .positive()
     .default(0.5),
 
+  collection: Joi.string()
+    .valid("standard", "everyday_favorite", "trending_collection", "signature_collection"),
+
   weightUnit: Joi.string()
     .trim()
     .lowercase()
@@ -165,7 +168,11 @@ const createProductSchema = Joi.object({
     .min(1)
     .required(),
 
-  pricing: pricingSchema.required(),
+  pricing: pricingSchema.keys({
+    collection: Joi.string()
+      .valid("everyday_favorite", "trending_collection", "signature_collection")
+      .required(),
+  }).required(),
 
   badge: Joi.string()
     .trim()

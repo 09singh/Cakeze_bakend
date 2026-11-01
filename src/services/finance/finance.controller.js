@@ -6,7 +6,7 @@ async function getFinance(req, res, next) {
     const schema = Joi.object({
       from: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).allow(""),
       to: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).allow(""),
-      type: Joi.string().valid("all", "website", "admin", "cash", "upi").default("all"),
+      type: Joi.string().valid("all", "website", "admin", "pos", "cash", "upi").default("all"),
       mode: Joi.string().valid("all", "cash", "cod", "upi", "other").default("all"),
     });
     const { error, value } = schema.validate(req.query, { abortEarly: false, stripUnknown: true });
